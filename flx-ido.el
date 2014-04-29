@@ -146,18 +146,16 @@ item, in which case, the ending items are deleted."
       (mapcar 'car things))))
 
 (defun flx-ido-match-internal (query items)
-  (if (< (length items) flx-ido-threshhold)
-      (let* ((matches (cl-loop for item in items
-                            for string = (if (consp item) (car item) item)
-                            for score = (flx-score string query flx-file-cache)
-                            if score
-                            collect (cons item score)
-                            into matches
-                            finally return matches)))
-        (flx-ido-decorate (ido-delete-runs
-                           (sort matches
-                                 (lambda (x y) (> (cadr x) (cadr y)))))))
-    (throw :too-big :too-big)))
+  (let* ((matches (cl-loop for item in items
+                           for string = (if (consp item) (car item) item)
+                           for score = (flx-score string query flx-file-cache)
+                           if score
+                           collect (cons item score)
+                           into matches
+                           finally return matches)))
+    (flx-ido-decorate (ido-delete-runs
+                       (sort matches
+                             (lambda (x y) (> (cadr x) (cadr y))))))))
 
 (defun flx-ido-key-for-query (query)
   (concat ido-current-directory query))
@@ -197,13 +195,19 @@ item, in which case, the ending items are deleted."
   (when flx-ido-mode
     (clrhash flx-ido-narrowed-matches-hash)))
 
+(defvar flx-ido-last-count 0)
+
+(defun flx-ido-set-last-count-and-return (items)
+  (setq flx-ido-last-count (length items))
+  items)
+
 (defadvice ido-set-matches-1 (around flx-ido-set-matches-1 activate)
   "Choose between the regular ido-set-matches-1 and flx-ido-match"
-  (when (or (not flx-ido-mode)
-            (eq :too-big
-                (catch :too-big
-                  (setq ad-return-value (flx-ido-match ido-text (ad-get-arg 0))))))
-    ad-do-it))
+  (flx-ido-set-last-count-and-return
+   (if (and flx-ido-mode (< flx-ido-last-count flx-ido-threshhold))
+
+       (setq ad-return-value (flx-ido-match ido-text (ad-get-arg 0)))
+     ad-do-it)))
 
 (defadvice ido-kill-buffer-at-head (before flx-ido-reset-hash activate)
   "Keep up with modification as required."
